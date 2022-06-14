@@ -66,7 +66,7 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 	text := textproto.NewConn(conn)
 	_, _, err := text.ReadResponse(220)
 	if err != nil {
-		text.Close()
+		_ = text.Close()
 		return nil, err
 	}
 	c := &Client{Text: text, conn: conn, serverName: host, localName: *hostName}
@@ -108,7 +108,7 @@ func (c *Client) Hello(localName string) error {
 }
 
 // cmd is a convenience function that sends a command and returns the response
-func (c *Client) cmd(expectCode int, format string, args ...any) (int, string, error) {
+func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, string, error) {
 	id, err := c.Text.Cmd(format, args...)
 	if err != nil {
 		return 0, "", err
@@ -139,8 +139,12 @@ func (c *Client) ehlo() error {
 	if len(extList) > 1 {
 		extList = extList[1:]
 		for _, line := range extList {
-			k, v, _ := strings.Cut(line, " ")
-			ext[k] = v
+			args := strings.SplitN(line, " ", 2)
+			if len(args) > 1 {
+				ext[args[0]] = args[1]
+			} else {
+				ext[args[0]] = ""
+			}
 		}
 	}
 	if mechs, ok := ext["AUTH"]; ok {
@@ -200,9 +204,9 @@ func (c *Client) Auth(a smtp.Auth) error {
 		return err
 	}
 	encoding := base64.StdEncoding
-	mech, resp, err := a.Start(&smtp.ServerInfo{c.serverName, c.tls, c.auth})
+	mech, resp, err := a.Start(&smtp.ServerInfo{Name: c.serverName, TLS: c.tls, Auth: c.auth})
 	if err != nil {
-		c.Quit()
+		_ = c.Quit()
 		return err
 	}
 	resp64 := make([]byte, encoding.EncodedLen(len(resp)))
@@ -224,8 +228,8 @@ func (c *Client) Auth(a smtp.Auth) error {
 		}
 		if err != nil {
 			// abort the AUTH
-			c.cmd(501, "*")
-			c.Quit()
+			_, _, _ = c.cmd(501, "*")
+			_ = c.Quit()
 			break
 		}
 		if resp == nil {
@@ -280,7 +284,7 @@ type dataCloser struct {
 }
 
 func (d *dataCloser) Close() error {
-	d.WriteCloser.Close()
+	_ = d.WriteCloser.Close()
 	_, _, err := d.c.Text.ReadResponse(250)
 	return err
 }
@@ -344,7 +348,9 @@ func SendMail(r *Remote, from string, to []string, msg []byte) error {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func(conn *tls.Conn) {
+			_ = conn.Close()
+		}(conn)
 		c, err = NewClient(conn, r.Hostname)
 		if err != nil {
 			return err
@@ -357,7 +363,10 @@ func SendMail(r *Remote, from string, to []string, msg []byte) error {
 		if err != nil {
 			return err
 		}
-		defer c.Close()
+		defer func(c *Client) {
+			_ = c.Close()
+
+		}(c)
 		if err = c.hello(); err != nil {
 			return err
 		}
@@ -472,7 +481,7 @@ func LoginAuth(username, password string) smtp.Auth {
 	return &loginAuth{username, password}
 }
 
-func (a *loginAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+func (a *loginAuth) Start(_ *smtp.ServerInfo) (string, []byte, error) {
 	return "LOGIN", []byte{}, nil
 }
 
@@ -484,7 +493,7 @@ func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
 		case "Password:":
 			return []byte(a.password), nil
 		default:
-			return nil, errors.New("Unknown fromServer")
+			return nil, errors.New("unknown fromServer")
 		}
 	}
 	return nil, nil

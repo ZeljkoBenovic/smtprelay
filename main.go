@@ -351,7 +351,7 @@ func main() {
 		servers = append(servers, server)
 
 		go func() {
-			server.Serve(lsnr)
+			_ = server.Serve(lsnr)
 		}()
 	}
 

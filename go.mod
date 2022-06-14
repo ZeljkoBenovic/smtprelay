@@ -1,4 +1,4 @@
-module github.com/decke/smtprelay
+module github.com/ZeljkoBenovic/smtprelay
 
 require (
 	github.com/chrj/smtpd v0.3.1
@@ -16,4 +16,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-go 1.18
+go 1.17
